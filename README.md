@@ -27,7 +27,7 @@ Consult the [OSC specifications](http://opensoundcontrol.org/spec-1_0) for more 
 2) An audio input is connected to channel 1 of the mixer, but channel 1's volume is turned all the way down. The OSC command  `/ch/01/mix/fader` can be used to control the channel's fader (volume knob). It takes a single float parameter between 0.0 to 1.0. You will hear some audio if you are succesful.
 
 3) __Bonus Hard Challenge:__ Display an audio level meter for Channel 1. The meter represents the loudness of the music as it's playing.
-	 * Use the `/meters.,s../meters/1` command to request periodic updates for the about audio levels for the next 10 seconds (`.` represents a zero byte). You will receive OSC commands from the mixer containing updates in this format:
+	 * Use the `/meters.,s../meters/1` command to request periodic updates of the audio levels for the next 10 seconds (`.` represents a zero byte). You will receive OSC commands from the mixer containing updates in this format:
 	 * `/meters/1...,b..<binary blob>`
 	 * The binary blob is in this format:
 		 * Length of blob (32-bit big endian)

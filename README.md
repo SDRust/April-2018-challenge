@@ -24,7 +24,7 @@ Consult the [OSC specifications](http://opensoundcontrol.org/spec-1_0) for more 
 ## The challenges!
 1) Create a `UdpSocket` and connect to the mixer on UDP port 10024. Send the `/info` command to the mixer, and inspect the response. The mixer will return an OSC response with version info about the mixer. __Remember that all fields in an OSC command must be aligned to 4 bytes.__ `/info` is 6 bytes (including the trailing null) and will require an extra 2 null bytes to pad it to 8 bytes.
 
-2) An audio input is connected to channel 1 of the mixer, but channel 1's volume turned all the way down. The OSC command  `/ch/01/mix/fader` can be used to control the channel's fader (volume knob). It takes a single float parameter between 0.0 to 1.0. You will hear some audio if you are succesful.
+2) An audio input is connected to channel 1 of the mixer, but channel 1's volume is turned all the way down. The OSC command  `/ch/01/mix/fader` can be used to control the channel's fader (volume knob). It takes a single float parameter between 0.0 to 1.0. You will hear some audio if you are succesful.
 
 3) __Bonus Hard Challenge:__ Display an audio level meter for Channel 1. The meter represents the loudness of the music as it's playing.
 	 * Use the `/meters.,s../meters/1` command to request periodic updates for the about audio levels for the next 10 seconds (`.` represents a zero byte). You will receive OSC commands from the mixer containing updates in this format:

@@ -1,0 +1,7 @@
+[package]
+name = "april-2018-challenge"
+version = "0.1.0"
+authors = ["San Diego Rust"]
+
+[dependencies]
+byteorder = "1.2.2"

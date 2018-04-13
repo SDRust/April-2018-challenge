@@ -4,21 +4,27 @@
 //! Controlling an audio mixer using OSC over UDP.
 //!
 //! See README.md for challenge details.
+
 #![allow(unused_imports)]
 
-use std::str;
-
-use std::io::{Read, Write};
-use std::net::UdpSocket;
-
-// The byteorder crate makes it easier to read/write binary numeric values.
 extern crate byteorder;
-use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt, WriteBytesExt};
+
+use std::net::UdpSocket;
+use std::str;
+use std::i16;
+
+use byteorder::{
+    BigEndian,
+    ByteOrder,
+    LittleEndian,
+    WriteBytesExt,
+};
 
 // Change this to match the IP address of the XR-12 mixer.
 // The mixer accepts OSC commands on UDP port 10024.
 const MIXER_ADDR: &str = "192.168.1.181:10024";
 
+/// Pads the provided buffer with null bytes to be 4-byte aligned.
 fn pad(buf: &mut Vec<u8>) {
     let zeros: &[u8] = &[0; 3];
     let m = buf.len() % 4;
@@ -27,6 +33,14 @@ fn pad(buf: &mut Vec<u8>) {
     }
 }
 
+/// Encodes the provided string to the buffer.
+fn encode_string(s: &str, buf: &mut Vec<u8>) {
+    buf.extend(s.as_bytes());
+    buf.push(0);
+    pad(buf);
+}
+
+/// Decodes a string from the buffer, returning the string value and the remaining buffer.
 fn decode_string(buf: &[u8]) -> (&str, &[u8]) {
     let idx = buf.iter().position(|&x| x == 0).expect("no null terminator");
     let s = str::from_utf8(&buf[..idx]).expect("not valid UTF-8");
@@ -42,18 +56,19 @@ fn decode_string(buf: &[u8]) -> (&str, &[u8]) {
     (s, buf)
 }
 
+/// An OSC command.
 #[derive(Debug)]
-struct Command {
+pub struct Command {
     address_pattern: String,
     arguments: Vec<Argument>,
 }
 
 impl Command {
+
+    /// Encodes the command to a buffer.
     fn encode(&self, buf: &mut Vec<u8>) {
         // Encode the address pattern.
-        buf.extend(self.address_pattern.as_bytes());
-        buf.push(0);
-        pad(buf);
+        encode_string(&self.address_pattern, buf);
 
         // Encode the type tags.
         buf.push(b',');
@@ -70,6 +85,7 @@ impl Command {
         }
     }
 
+    /// Decodes a Command from a buffer.
     fn decode(buf: &[u8]) -> Command {
         let (address_pattern, buf) = decode_string(buf);
 
@@ -79,27 +95,9 @@ impl Command {
 
         let mut arguments = Vec::with_capacity(type_tags.len());
         for type_tag in type_tags.chars() {
-            match type_tag {
-                's' => {
-                    let (s, b) = decode_string(buf);
-                    arguments.push(Argument::String(s.to_string()));
-                    buf = b;
-                },
-                'i' => {
-                    arguments.push(Argument::Integer(BigEndian::read_i32(&buf[..4])));
-                    buf = &buf[4..];
-                },
-                'f' => {
-                    arguments.push(Argument::Float(BigEndian::read_f32(&buf[..4])));
-                    buf = &buf[4..];
-                },
-                'b' => {
-                    let len = BigEndian::read_u32(&buf[..4]) as usize;
-                    arguments.push(Argument::Binary(buf[4..][..len].to_owned()));
-                    buf = &buf[4 + len..];
-                },
-                _ => panic!("unknown type tag: {}", type_tag),
-            }
+            let (a, b) = Argument::decode(type_tag, buf);
+            arguments.push(a);
+            buf = b;
         }
         Command {
             address_pattern: address_pattern.to_string(),
@@ -108,8 +106,9 @@ impl Command {
     }
 }
 
+/// An OSC Command argument.
 #[derive(Debug)]
-enum Argument {
+pub enum Argument {
     String(String),
     Integer(i32),
     Float(f32),
@@ -117,6 +116,8 @@ enum Argument {
 }
 
 impl Argument {
+
+    /// Encode the argument to a buffer.
     fn encode(&self, buf: &mut Vec<u8>) {
         match self {
             Argument::String(s) => {
@@ -132,6 +133,25 @@ impl Argument {
         }
     }
 
+    /// Decodes an argument of the provided type from a buffer, returning the argument, and the
+    /// remaining buffer.
+    fn decode(type_tag: char, buf: &[u8]) -> (Argument, &[u8]) {
+        match type_tag {
+            's' => {
+                let (s, b) = decode_string(buf);
+                (Argument::String(s.to_string()), b)
+            },
+            'i' => (Argument::Integer(BigEndian::read_i32(&buf[..4])), &buf[4..]),
+            'f' => (Argument::Float(BigEndian::read_f32(&buf[..4])), &buf[4..]),
+            'b' => {
+                let len = BigEndian::read_u32(&buf[..4]) as usize;
+                (Argument::Binary(buf[4..][..len].to_owned()), &buf[4 + len..])
+            },
+            _ => panic!("unknown type tag: {}", type_tag),
+        }
+    }
+
+    /// Returns the tag byte for the argument type.
     fn tag(&self) -> u8 {
         match self {
             Argument::String(_) => b's',
@@ -148,14 +168,14 @@ fn main() {
 
     // Challenge 1.
 
-    // Send the command.
-    let command = Command {
+    // Send the request.
+    let request = Command {
         address_pattern: "/info".to_string(),
         arguments: vec![],
     };
     let mut buf = Vec::new();
-    command.encode(&mut buf);
-    println!("request: {:?}", command);
+    request.encode(&mut buf);
+    println!("request: {:?}", request);
     socket.send(&buf).expect("failed to write to UDP socket");
 
     // Receive the response.
@@ -163,16 +183,15 @@ fn main() {
     let len = socket.recv(&mut buf).expect("failed to receive response");
     println!("response: {:?}", Command::decode(&buf[..len]));
 
-    /*
     // Challenge 2.
 
-    let command = Command {
+    let request = Command {
         address_pattern: "/ch/01/mix/fader".to_string(),
-        arguments: vec![Argument::Float(0.9)],
+        arguments: vec![Argument::Float(0.0)],
     };
     let mut buf = Vec::new();
-    command.encode(&mut buf);
-    println!("request: {:?}", command);
+    request.encode(&mut buf);
+    println!("request: {:?}", request);
     socket.send(&buf).expect("failed to write to UDP socket");
 
     // Bonus!
@@ -186,28 +205,23 @@ fn main() {
     println!("request: {:?}", request);
     socket.send(&buf).expect("failed to write to UDP socket");
 
-    let asterisks = [b'*'; 64];
+    let asterisks = str::from_utf8(&[b'*'; 1024]).unwrap();
     let mut buf = [0; 4096 * 4];
     loop {
         let len = socket.recv(&mut buf).expect("failed to receive response");
-        let command = Command::decode(&buf[..len]);
-        println!("response: {:?}", command);
+        let response = Command::decode(&buf[..len]);
+        //println!("response: {:?}", response);
 
-        let binary = if let Argument::Binary(ref b) = command.arguments[0] {
+        let binary = if let Argument::Binary(ref b) = response.arguments[0] {
             b
         } else {
             panic!("not a binary argument");
         };
 
+        // Channel 1 comes after another 32 bit length field, so offset by 4.
         let channel1 = LittleEndian::read_i16(&binary[4..]);
 
-        let width = ((32767i16 + channel1) as f64).log2() as usize;
-        println!("width: {}, channel1: {}", width, channel1);
-
-        let asterisks = unsafe { str::from_utf8_unchecked(&asterisks) };
-
-        println!("{}", &asterisks[..width]);
-
+        let width = ((i16::MAX + channel1) as f64) as usize / 256 ;
+        println!("channel 1: {}\t{}", channel1, &asterisks[..width]);
     }
-    */
 }
